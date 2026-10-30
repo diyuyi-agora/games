@@ -5,6 +5,7 @@
 ![桌面版实验场](docs/images/desktop.png)
 
 - [设计方案与实现映射](docs/DESIGN.md)
+- [打击感优化调研](docs/RESEARCH.md)
 - [验证记录](docs/VALIDATION.md)
 - [手机界面预览](docs/images/mobile.png)
 
