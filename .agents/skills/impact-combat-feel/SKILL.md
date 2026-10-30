@@ -13,11 +13,11 @@ description: Diagnose and improve action-game combat feel by aligning input, att
 
 按问题读取相关文件，不必加载全部资料：
 
-- 攻击数据、剑刃姿态、扫掠碰撞与阻尼弹簧：[combat.js](../../../combat.js)。
-- 输入缓存、状态转换、计时、音频与场景绘制：[game.js](../../../game.js)。
-- 当前玩法和参数：[设计方案](../../../docs/DESIGN.md)。以实现为准，发现文档过期时同步修正。
-- 外部证据、诊断理由和候选实验：[优化调研](../../../docs/RESEARCH.md)。区分正文依据、视频入口、代码推算与体验假设。
-- 已验证行为及限制：[验证记录](../../../docs/VALIDATION.md)。
+- 攻击数据、剑刃姿态、扫掠碰撞与阻尼弹簧：[combat.js](../../../tutorial/impact-combat/combat.js)。
+- 输入缓存、状态转换、计时、音频与场景绘制：[game.js](../../../tutorial/impact-combat/game.js)。
+- 当前玩法和参数：[设计方案](../../../tutorial/impact-combat/docs/DESIGN.md)。以实现为准，发现文档过期时同步修正。
+- 外部证据、诊断理由和候选实验：[优化调研](../../../tutorial/impact-combat/docs/RESEARCH.md)。区分正文依据、视频入口、代码推算与体验假设。
+- 已验证行为及限制：[验证记录](../../../tutorial/impact-combat/docs/VALIDATION.md)。
 
 ## 优化时保留的关键约束
 
@@ -52,16 +52,16 @@ description: Diagnose and improve action-game combat feel by aligning input, att
 
 ## 本项目验证入口
 
-从仓库根目录运行已有行为测试与语法检查：
+从仓库根目录运行本方向的行为测试与语法检查：
 
 ```sh
-node --test tests/combat.test.cjs
-node --check game.js
-node --check combat.js
+node --test tutorial/impact-combat/tests/combat.test.cjs
+node --check tutorial/impact-combat/game.js
+node --check tutorial/impact-combat/combat.js
 ```
 
 计时或碰撞修改重点覆盖 20/30/60/144 fps、单次结算、左右镜像、挥空、三连、三次重击破甲及 30 秒试炼；原始与完整预设比较相同伤害和接触几何。
 
-浏览器使用已有本地服务；尚无服务时运行 `python3 -m http.server 4173 --bind 127.0.0.1`。检查键盘与触控、单次点击、按住移动、释放／失焦、控制台和窄屏布局。需要自动化时使用当前环境可用的浏览器工具，不把本机浏览器绝对路径写进可复用说明。
+浏览器使用已有本地服务；尚无服务时从仓库根运行 `python3 -m http.server 4173 --bind 127.0.0.1`，访问 `/tutorial/impact-combat/`。检查键盘与触控、单次点击、按住移动、释放／失焦、控制台和窄屏布局。需要自动化时使用当前环境可用的浏览器工具，不把本机浏览器绝对路径写进可复用说明。
 
 展开「接触与节奏实验」调整停顿、显示判定、导出本轮记录；以 `?debug=1` 打开时通过只读 `window.impactLab.snapshot()` 检查状态。事件日志只保留最近 120 条，应及时导出；模拟测试与真实硬件测量分开报告。
