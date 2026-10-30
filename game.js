@@ -11,19 +11,24 @@
   const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
   const lerp = (a, b, t) => a + (b - a) * t;
   const rand = (a, b) => a + Math.random() * (b - a);
-  let intensity = 1, audioContext, master, noiseBuffer;
+  let intensity = 1, heavyStop = .09, audioContext, master, noiseBuffer;
   let player, enemy, particles, floats, ghosts, attack, queued;
-  let time = 0, lastTime = 0, freeze = 0, shake = 0, totalHits = 0;
+  let time = 0, lastTime = null, freeze = 0, totalHits = 0;
   let combo = 0, comboAge = 0, chain = 0, chainAge = 0, messageAge = 0;
   let challenge = false, remaining = 30, kills = 0, damageTotal = 0, finished = false;
   let hitFlash = 0, uiTimer = 0, audioEnabled = false;
+  const STEP = 1 / 240, BUFFER = .24;
+  let accumulator = 0, frameTime = 0, combatTime = 0, freezeStarted = null, stopRequested = 0;
+  let cameraSpring = { x: 0, v: 0 }, cameraVertical = { x: 0, v: 0 };
+  let lastContact = null, showGeometry = false, events = [], audioVoices = [];
   let viewWidth = W, cameraX = 0;
-  const LIGHTS = [
-    { duration: .32, contact: .105, damage: 12, range: 179, knock: 19, stop: .045, stun: .23 },
-    { duration: .33, contact: .115, damage: 14, range: 188, knock: 22, stop: .055, stun: .25 },
-    { duration: .44, contact: .17, damage: 21, range: 198, knock: 35, stop: .075, stun: .34 }
-  ];
-  const HEAVY = { duration: .79, contact: .35, damage: 42, range: 221, knock: 71, stop: .11, stun: .73 };
+  const LIGHTS = Combat.attacks.light, HEAVY = Combat.attacks.heavy;
+  function record(type, data = {}) { events.push({ type, at: frameTime, ...data }); if (events.length > 120) events.shift(); }
+  function kickCamera(power, direction) {
+    if (!effects.shake) return;
+    cameraSpring.v = clamp(cameraSpring.v + power * direction * intensity * 31, -650, 650);
+    cameraVertical.v = clamp(cameraVertical.v - power * intensity * 12, -280, 280);
+  }
 
   function initAudio() {
     if (!effects.audio) return;
@@ -32,7 +37,11 @@
         const AudioCtor = window.AudioContext || window.webkitAudioContext;
         if (!AudioCtor) return;
         audioContext = new AudioCtor();
-        master = audioContext.createGain(); master.gain.value = .48; master.connect(audioContext.destination);
+        master = audioContext.createGain(); master.gain.value = .48;
+        const limiter = audioContext.createDynamicsCompressor();
+        limiter.threshold.value = -12; limiter.knee.value = 10; limiter.ratio.value = 8;
+        limiter.attack.value = .003; limiter.release.value = .12;
+        master.connect(limiter); limiter.connect(audioContext.destination);
         noiseBuffer = audioContext.createBuffer(1, audioContext.sampleRate, audioContext.sampleRate);
         const data = noiseBuffer.getChannelData(0);
         for (let i = 0; i < data.length; i++) data[i] = Math.random() * 2 - 1;
@@ -41,19 +50,33 @@
       audioEnabled = true;
     } catch (_) { audioEnabled = false; }
   }
-  function tone(freq, endFreq, duration, volume, type = 'sine', delay = 0) {
+  function routeVoice(source, gain, duration, priority) {
+    const now = audioContext.currentTime;
+    audioVoices = audioVoices.filter(v => v.end > now);
+    if (audioVoices.length >= 14) {
+      const victim = audioVoices.reduce((a, b) => a.priority <= b.priority ? a : b);
+      if (victim.priority > priority) return false;
+      victim.gain.gain.cancelScheduledValues(now); victim.gain.gain.setTargetAtTime(.001, now, .006);
+      victim.source.stop(now + .025); audioVoices.splice(audioVoices.indexOf(victim), 1);
+    }
+    audioVoices.push({ source, gain, end: now + duration + .03, priority });
+    return true;
+  }
+  function tone(freq, endFreq, duration, volume, type = 'sine', delay = 0, priority = 2) {
     const t = audioContext.currentTime + delay, osc = audioContext.createOscillator(), gain = audioContext.createGain();
     osc.type = type; osc.frequency.setValueAtTime(freq, t); osc.frequency.exponentialRampToValueAtTime(Math.max(15, endFreq), t + duration);
     gain.gain.setValueAtTime(.001, t); gain.gain.linearRampToValueAtTime(volume, t + .004); gain.gain.exponentialRampToValueAtTime(.001, t + duration);
+    if (!routeVoice(osc, gain, duration + delay, priority)) return;
     osc.connect(gain); gain.connect(master); osc.start(t); osc.stop(t + duration + .02);
   }
   function noise(duration, freq, volume) {
     const t = audioContext.currentTime, source = audioContext.createBufferSource(), filter = audioContext.createBiquadFilter(), gain = audioContext.createGain();
     source.buffer = noiseBuffer; filter.type = 'bandpass'; filter.frequency.value = freq; filter.Q.value = .7;
     gain.gain.setValueAtTime(volume, t); gain.gain.exponentialRampToValueAtTime(.001, t + duration);
+    if (!routeVoice(source, gain, duration, 1)) return;
     source.connect(filter); filter.connect(gain); gain.connect(master); source.start(t); source.stop(t + duration);
   }
-  function sound(kind) {
+  function sound(kind, metal = false) {
     if (!effects.audio || !audioEnabled || !audioContext || audioContext.state !== 'running') return;
     const v = Math.min(intensity, 1.3);
     if (kind === 'swing') { noise(.09, 1600, .16 * v); return; }
@@ -62,8 +85,8 @@
     if (kind === 'break') { tone(270, 55, .25, .3 * v, 'triangle'); noise(.3, 2400, .22 * v); tone(620, 170, .3, .09 * v, 'sine', .03); return; }
     const heavy = kind === 'heavy';
     tone(heavy ? 115 : 180, 35, heavy ? .25 : .12, .4 * v, 'sine');
-    noise(heavy ? .2 : .1, enemy.armored ? 3000 : 1800, .32 * v);
-    tone(enemy.armored ? 640 : 390, enemy.armored ? 250 : 140, .13, .08 * v, 'triangle');
+    noise(heavy ? .16 : .075, metal ? 3400 : 1300, .24 * v);
+    tone(metal ? 750 : 320, metal ? 390 : 110, metal ? .2 : .1, .08 * v, 'triangle', .012);
   }
 
   function resetScene(startChallenge = false) {
@@ -71,7 +94,9 @@
     player = { x: 565, facing: 1, move: 0, hp: 5, dash: 0, dashCD: 0, hurt: 0, invincible: 0, walk: 0 };
     enemy = newEnemy(758);
     particles = []; floats = []; ghosts = []; attack = null; queued = null;
-    freeze = 0; shake = 0; totalHits = 0; combo = 0; comboAge = 0; chain = 0; chainAge = 0;
+    freeze = 0; totalHits = 0; combo = 0; comboAge = 0; chain = 0; chainAge = 0;
+    accumulator = 0; combatTime = 0; freezeStarted = null; lastContact = null; events = [];
+    cameraSpring = { x: 0, v: 0 }; cameraVertical = { x: 0, v: 0 };
     hitFlash = 0; keys.clear(); touchKeys.clear();
     document.querySelectorAll('.key-button').forEach(b => b.classList.remove('held'));
     $('result-overlay').hidden = true;
@@ -80,6 +105,7 @@
     $('last-hit').innerHTML = '等待挥剑<span>—</span>';
     $('damage-value').innerHTML = '—<small>伤害</small>';
     $('stop-value').innerHTML = '—<small>ms</small>';
+    $('stop-detail').textContent = '设定 / 实测';
     $('arena-hint').textContent = challenge ? '橙色预警即将攻击 · 空格闪避，J / K 反击' : '按 J 打出第一击；用 B 对比两种反馈';
     say(challenge ? '试炼开始 · 闪避红色预警，再反击' : '', challenge ? 2.1 : 0);
     updateHUD();
@@ -87,7 +113,7 @@
   }
   function newEnemy(x) {
     const armored = $('target-type').value === 'armor';
-    return { x, home: x, hp: armored ? 240 : 180, maxHP: armored ? 240 : 180, armored, armor: armored ? 3 : 0, stun: 0, flash: 0, recoil: 0, dead: 0, respawn: 0, state: 'idle', stateTime: 0, cooldown: 1.6, facing: -1, hit: false, walk: 0 };
+    return { x, home: x, push: 0, hp: armored ? 240 : 180, maxHP: armored ? 240 : 180, armored, armor: armored ? 3 : 0, stun: 0, flash: 0, recoil: 0, dead: 0, respawn: 0, state: 'idle', stateTime: 0, cooldown: 1.6, facing: -1, hit: false, walk: 0 };
   }
   function say(text, duration = 1.7) { $('arena-message').textContent = text; messageAge = duration; }
   function updatePresets() {
@@ -106,15 +132,23 @@
   function attackRequest(kind) {
     if (finished) return;
     initAudio();
-    if (attack || player.dash > 0 || player.hurt > .12) { queued = { kind, life: .24 }; return; }
+    record('input', { kind });
+    if (attack || player.dash > 0 || player.hurt > .12 || freeze > 0) {
+      // Dodge is deliberate: attack mashing must not overwrite a queued escape.
+      if (queued?.kind !== 'dash' || kind === 'dash') queued = { kind, life: BUFFER };
+      return;
+    }
     startAttack(kind);
   }
   function startAttack(kind) {
     if (kind === 'dash') { dash(); return; }
     const heavy = kind === 'heavy';
-    if (!heavy) { if (chainAge > .85) chain = 0; chain = chain % 3 + 1; chainAge = 0; }
+    if (!heavy) { if (chainAge > .65) chain = 0; chain = chain % 3 + 1; }
+    else chain = 0;
+    chainAge = 0;
     const info = heavy ? HEAVY : LIGHTS[chain - 1];
-    attack = { kind, index: heavy ? 0 : chain, t: 0, hit: false, swung: false, ...info };
+    attack = { kind, index: heavy ? 0 : chain, t: 0, hit: false, swung: false, missed: false, ...info, stop: heavy ? heavyStop : info.stop };
+    record('attack', { kind, index: attack.index });
     player.move = 0;
     $('arena-hint').textContent = heavy ? '蓄势 → 释放 → 接触 → 余势' : '连续按 J 衔接三连击；K 重击制造节奏重音';
   }
@@ -122,18 +156,14 @@
     if (player.dashCD > 0 || finished || player.hurt > .12) return;
     attack = null; queued = null;
     player.dash = .19; player.dashCD = .66; player.invincible = .27;
+    record('dash');
     sound('dash');
   }
-  function impact() {
+  function impact(contact) {
     const a = attack;
     if (!a || enemy.dead) return;
-    const distance = (enemy.x - player.x) * player.facing;
-    if (distance < -28 || distance > a.range) {
-      $('last-hit').innerHTML = `${a.kind === 'heavy' ? '重击' : '轻击'}挥空<span>MISS</span>`;
-      $('damage-value').innerHTML = '0<small>伤害</small>';
-      $('stop-value').innerHTML = '0<small>ms</small>';
-      return;
-    }
+    a.hit = true;
+    lastContact = { ...contact, age: 0 };
     const heavy = a.kind === 'heavy', armorActive = enemy.armored && enemy.armor > 0;
     let broken = false;
     if (armorActive && heavy) { enemy.armor--; broken = enemy.armor === 0; }
@@ -143,14 +173,16 @@
     enemy.flash = .15; enemy.recoil = heavy ? 1.2 : .65;
     enemy.stun = resisted ? .035 : a.stun;
     // Displacement and stun are combat rules, identical in both presentation presets.
-    enemy.x = clamp(enemy.x + player.facing * a.knock * (resisted ? .22 : 1), 95, 1100);
+    enemy.push += player.facing * a.knock * (resisted ? .22 : 1);
     if (!resisted) { enemy.state = 'idle'; enemy.stateTime = 0; enemy.cooldown = Math.max(enemy.cooldown, .7); }
     totalHits++; combo++; comboAge = 0; damageTotal += damage;
     const actualStop = effects.hitstop ? a.stop * intensity : 0;
     freeze = Math.min(.16, actualStop);
-    if (effects.shake) shake = (heavy ? 12 : a.index === 3 ? 7 : 4) * intensity;
+    stopRequested = freeze * 1000; freezeStarted = freeze > 0 ? combatTime : null;
+    record('contact', { x: contact.x, y: contact.y, targetX: enemy.x, damage, stop: stopRequested });
+    kickCamera(heavy ? 11 : a.index === 3 ? 6 : 3.5, player.facing);
     hitFlash = .13;
-    const cx = enemy.x - player.facing * 28, cy = FLOOR - 80;
+    const cx = contact.x, cy = contact.y;
     if (effects.particles) {
       burst(cx, cy, heavy ? 26 : 13, heavy ? '#fff3c0' : '#e9f4d4', player.facing, heavy ? 1.6 : 1);
       burst(cx, cy + 8, heavy ? 14 : 6, '#dd8246', player.facing, 1);
@@ -160,16 +192,17 @@
     $('last-hit').innerHTML = `${broken ? '装甲击破' : resisted ? '装甲承受' : heavy ? '重击命中' : ['轻击 · 一式', '轻击 · 二式', '轻击 · 三式'][a.index - 1]}<span>${broken ? 'BREAK' : heavy ? 'HEAVY' : 'LIGHT'}</span>`;
     $('damage-value').innerHTML = `${damage}<small>伤害</small>`;
     $('stop-value').innerHTML = `${Math.round(freeze * 1000)}<small>ms</small>`;
+    $('stop-detail').textContent = freeze > 0 ? '实测中…' : '实测 0 ms';
     document.querySelector('.signal-icon').classList.add('pulse');
-    if (broken) { say('装甲击破 · 现在可以打断它'); sound('break'); }
-    else sound(heavy ? 'heavy' : 'light');
+    if (broken) say('装甲击破 · 现在可以打断它');
+    if (!broken && enemy.hp > 0) sound(heavy ? 'heavy' : 'light', armorActive);
     if (resisted) $('arena-hint').textContent = `装甲承受轻击 · 再用 ${enemy.armor} 次重击破防`;
     if (enemy.hp <= 0) {
       enemy.dead = 1; enemy.respawn = 1.15; enemy.state = 'idle'; kills++;
       if (effects.particles) burst(enemy.x, FLOOR - 70, 36, '#d6dbac', player.facing, 1.9);
       if (!broken) say(challenge ? `击破 ${kills} · 继续！` : '击破 · 机兵即将重置', 1);
-      sound('break');
     }
+    if (broken || enemy.hp <= 0) sound('break');
     updateHUD();
   }
   function burst(x, y, count, color, dir, power) {
@@ -184,7 +217,7 @@
     player.hp--; player.hurt = .32; player.invincible = .85;
     player.x = clamp(player.x + enemy.facing * 65, 85, 1110);
     attack = null; queued = null; combo = 0;
-    if (effects.shake) shake = 8 * intensity;
+    kickCamera(7, enemy.facing);
     if (effects.particles) burst(player.x, FLOOR - 70, 12, '#ec8d5a', enemy.facing, 1);
     sound('hurt'); say('按空格闪过预警攻击', 1.2);
     updateHUD();
@@ -215,44 +248,93 @@
     [...$('player-health').children].forEach((el, i) => el.classList.toggle('empty', i >= player.hp));
     $('arena-clock').textContent = challenge ? `${Math.ceil(remaining).toString().padStart(2, '0')} SEC / ${kills} BREAKS` : finished ? 'SESSION COMPLETE' : '∞ FREE PLAY';
   }
-  function update(dt) {
+  function updatePresentation(dt) {
     time += dt;
     if (messageAge > 0) { messageAge -= dt; if (messageAge <= 0) $('arena-message').textContent = ''; }
-    if (challenge) { remaining = Math.max(0, remaining - dt); if (remaining === 0) endChallenge(true); }
-    comboAge += dt; chainAge += dt;
-    if (comboAge > 2.5) { combo = 0; $('combo-hud').classList.remove('active'); }
+    if (challenge) {
+      remaining = Math.max(0, remaining - dt);
+      if (remaining <= 1e-6) { remaining = 0; endChallenge(true); }
+    }
     hitFlash = Math.max(0, hitFlash - dt);
-    shake = Math.max(0, shake - dt * 55);
-    particles.forEach(p => { p.life -= dt; if (p.kind === 'spark') { p.x += p.vx * dt; p.y += p.vy * dt; p.vy += 650 * dt; p.vx *= 1 - dt * 2; } });
+    cameraSpring = Combat.spring(cameraSpring, dt);
+    cameraVertical = Combat.spring(cameraVertical, dt, 32, 16);
+    if (lastContact) lastContact.age += dt;
+    particles.forEach(p => { p.life -= dt; if (p.kind === 'spark') { p.x += p.vx * dt; p.y += p.vy * dt; p.vy += 650 * dt; p.vx *= Math.exp(-dt * 2); } });
     particles = particles.filter(p => p.life > 0);
     floats.forEach(f => { f.life -= dt; f.y -= dt * 54; }); floats = floats.filter(f => f.life > 0);
     ghosts.forEach(g => g.life -= dt); ghosts = ghosts.filter(g => g.life > 0);
     uiTimer += dt;
-    if (uiTimer > .08) { updateHUD(); uiTimer = 0; }
-    if (freeze > 0) { freeze -= dt; return; }
+    if (uiTimer > .06) { updateHUD(); uiTimer = 0; }
+    if (hitFlash === 0) document.querySelector('.signal-icon').classList.remove('pulse');
+  }
+  function recoverable(a) {
+    // Successful hits can be followed sooner; misses still require their recovery.
+    return a.hit ? a.contact + (a.kind === 'heavy' ? .21 : .09) : a.duration;
+  }
+  function update(dt) {
     if (finished) return;
+    combatTime += dt;
+    if (freeze > 0) {
+      const paused = Math.min(dt, freeze); freeze -= paused; dt -= paused;
+      if (freeze <= 1e-8) {
+        freeze = 0;
+        if (freezeStarted !== null) {
+          const observed = Math.max(0, (combatTime - freezeStarted) * 1000);
+          $('stop-detail').textContent = `实测 ${Math.round(observed)} ms`;
+          record('stop-end', { requested: stopRequested, observed });
+          freezeStarted = null;
+        }
+      }
+      if (dt < 1e-8) return;
+    }
+    comboAge += dt;
+    if (!attack) chainAge += dt;
+    if (comboAge > 2.5) { combo = 0; $('combo-hud').classList.remove('active'); }
     player.dashCD = Math.max(0, player.dashCD - dt); player.hurt = Math.max(0, player.hurt - dt); player.invincible = Math.max(0, player.invincible - dt);
-    if (queued) { queued.life -= dt; if (queued.life <= 0) queued = null; }
+    if (queued) {
+      // A command entered during this attack is retained through its recovery.
+      // The queue stays one slot; dodge has priority over an offensive replacement.
+      if (!attack) queued.life -= dt;
+      if (queued.life <= 0) { record('input-expired', { kind: queued.kind }); queued = null; }
+    }
     const left = keys.has('a') || keys.has('arrowleft') || touchKeys.has('left');
     const right = keys.has('d') || keys.has('arrowright') || touchKeys.has('right');
     const movement = Number(right) - Number(left);
+    if (queued && attack && attack.t >= recoverable(attack) && (queued.kind !== 'dash' || player.dashCD <= 0)) {
+      const kind = queued.kind; queued = null; attack = null; startAttack(kind);
+    }
     if (player.dash > 0) {
-      player.dash = Math.max(0, player.dash - dt);
-      player.x += player.facing * 890 * dt;
+      const travel = Math.min(player.dash, dt); player.dash = Math.max(0, player.dash - dt);
+      player.x += player.facing * 890 * travel;
       if (effects.particles && ghosts.length < 7) ghosts.push({ x: player.x, facing: player.facing, life: .16 });
     } else if (!attack && player.hurt <= 0) {
       player.move = movement;
       if (movement) { player.facing = movement; player.x += movement * 290 * dt; player.walk += dt * 13; }
-      if (queued) { const kind = queued.kind; queued = null; startAttack(kind); }
+      if (queued && (queued.kind !== 'dash' || player.dashCD <= 0)) { const kind = queued.kind; queued = null; startAttack(kind); }
     }
     player.x = clamp(player.x, 80, 1110);
     if (attack) {
-      const prev = attack.t; attack.t += dt;
-      if (attack.t >= attack.contact - .055 && !attack.swung) { sound('swing'); attack.swung = true; }
-      if (attack.t > attack.contact - .075 && attack.t < attack.contact + .045) player.x = clamp(player.x + player.facing * (attack.kind === 'heavy' ? 390 : 270) * dt, 80, 1110);
-      if (prev < attack.contact && attack.t >= attack.contact && !attack.hit) { attack.hit = true; impact(); }
-      if (attack && attack.t >= attack.duration) attack = null;
+      const a = attack, previous = a.t, oldX = player.x;
+      a.t = Math.min(a.duration, a.t + dt);
+      if (a.t >= a.contact - .055 && !a.swung) { sound('swing'); a.swung = true; }
+      player.x = clamp(player.x + player.facing * (Combat.lunge(a, a.t) - Combat.lunge(a, previous)), 80, 1110);
+      if (!a.hit && !enemy.dead && a.t >= a.contact && previous <= a.contact + a.active) {
+        const from = Math.max(previous, a.contact), to = Math.min(a.t, a.contact + a.active);
+        const f = clamp((from - previous) / dt, 0, 1);
+        const point = Combat.contact(a, { t: from, x: lerp(oldX, player.x, f) }, { t: to, x: player.x }, FLOOR, player.facing, enemy.x, enemy.x);
+        if (point) { impact(point); if (freeze > 0) return; }
+      }
+      if (!a.hit && !a.missed && a.t >= a.contact + a.active) {
+        a.missed = true;
+        $('last-hit').innerHTML = `${a.kind === 'heavy' ? '重击' : '轻击'}挥空<span>MISS</span>`;
+        $('damage-value').innerHTML = '0<small>伤害</small>';
+        $('stop-value').innerHTML = '0<small>ms</small>';
+        $('stop-detail').textContent = '实测 0 ms'; record('miss');
+      }
+      if (a.t >= a.duration) attack = null;
     }
+    const displacement = enemy.push * (1 - Math.exp(-dt * 20));
+    enemy.x = clamp(enemy.x + displacement, 95, 1100); enemy.push -= displacement;
     if (enemy.dead) {
       enemy.respawn -= dt;
       if (enemy.respawn <= 0) {
@@ -355,7 +437,7 @@
   function drawPlayer(x = player.x, dir = player.facing, ghost = false) {
     const moving = player.move && !attack && player.dash <= 0;
     const stride = moving ? Math.sin(player.walk) * 10 : 0;
-    const bob = moving ? Math.abs(Math.cos(player.walk)) * 3 : Math.sin(time * 2.7) * 1.6;
+    const bob = attack ? 0 : moving ? Math.abs(Math.cos(player.walk)) * 3 : Math.sin(time * 2.7) * 1.6;
     if (!ghost) ellipse(x, FLOOR + 3, player.dash > 0 ? 44 : 29, 6, '#142e2e45');
     ctx.save(); ctx.translate(x, FLOOR + bob); ctx.scale(dir, 1);
     if (player.dash > 0) ctx.transform(1, 0, -.2, 1, 0, 0);
@@ -381,43 +463,48 @@
     poly([[1,-117],[20,-114],[21,-107],[2,-109]], '#314c42');
     line([[6,-113],[17,-111]], '#a6c9b1', 1.7);
     poly([[-4,-133],[2,-143],[8,-132]], '#d9dfc9');
-    // Sword path follows anticipation, fast contact and recovery.
-    let angle = .52, handX = 10, handY = -68;
-    if (attack) {
-      const a = attack, t = a.t;
-      if (a.kind === 'heavy') {
-        if (t < .28) { angle = lerp(-.5, -2.25, clamp(t / .24, 0, 1)); handY = -74; }
-        else if (t < .41) { angle = lerp(-2.25, 1.25, (t - .28) / .13); handY = -78; handX = 18; }
-        else angle = lerp(1.25, .52, clamp((t - .41) / .38, 0, 1));
-      } else {
-        const reverse = a.index === 2;
-        if (t < a.contact - .045) angle = reverse ? 1.6 : -1.85;
-        else if (t < a.contact + .065) angle = lerp(reverse ? 1.6 : -1.85, reverse ? -1.3 : 1.3, clamp((t - a.contact + .045) / .11, 0, 1));
-        else angle = lerp(reverse ? -1.3 : 1.3, .52, clamp((t - a.contact - .065) / .15, 0, 1));
-        handX = 17;
-      }
-    }
+    // The visible blade and the collision sweep share this exact pose.
+    const pose = attack ? Combat.pose(attack) : { angle: .52, x: 10, y: -68, length: 118 };
+    const { angle, x: handX, y: handY, length } = pose;
     line([[9,-81],[handX+6,handY]], '#b4c5ad', 10);
     ctx.save(); ctx.translate(handX, handY); ctx.rotate(angle);
     rect(0,-3,26,6,'#594f3b'); rect(21,-11,6,22,'#c8ac70');
-    poly([[27,-6],[99,-5],[118,0],[99,6],[27,6]], '#eef2d9');
-    poly([[28,1],[111,0],[99,6],[27,6]], '#a9bfa8');
-    line([[31,-4],[99,-3]], '#ffffed', 1);
+    poly([[27,-6],[length-19,-5],[length,0],[length-19,6],[27,6]], '#eef2d9');
+    poly([[28,1],[length-7,0],[length-19,6],[27,6]], '#a9bfa8');
+    line([[31,-4],[length-19,-3]], '#ffffed', 1);
     ctx.restore();
     ellipse(handX+4,handY,6,6,'#e5e8cc');
     ctx.restore();
     if (!ghost && attack && effects.particles) drawSlash();
   }
   function drawSlash() {
-    const a = attack, t = a.t - a.contact, heavy = a.kind === 'heavy';
-    if (t < -.045 || t > .18) return;
-    const alpha = (1 - clamp((t + .01) / .19, 0, 1)) * .9;
-    ctx.save(); ctx.translate(player.x, FLOOR - 75); ctx.scale(player.facing, 1); ctx.globalAlpha = alpha;
-    const r = heavy ? 180 : a.index === 3 ? 156 : 140;
-    ctx.rotate(a.index === 2 ? -.3 : .13);
-    ctx.beginPath(); ctx.ellipse(42, -4, r, heavy ? 96 : 68, 0, -1.3, 1.4); ctx.ellipse(42,-4,r-29,heavy?72:46,0,1.4,-1.3,true); ctx.closePath();
-    const g = ctx.createLinearGradient(0,-90,190,90); g.addColorStop(0,'#f3f6d500'); g.addColorStop(.6,heavy?'#fff3bdcc':'#dceee2bb'); g.addColorStop(1,'#ffffec'); ctx.fillStyle=g;ctx.fill();
-    ctx.beginPath(); ctx.ellipse(42,-4,r,heavy?96:68,0,-1.1,1.25); ctx.strokeStyle='#fffbe1';ctx.lineWidth=heavy?4:2;ctx.stroke();
+    const a = attack;
+    if (a.t < a.contact - .045 || a.t > a.contact + a.active + .12) return;
+    ctx.save();
+    for (let i = 7; i >= 0; i--) {
+      const t = a.t - i * .008;
+      if (t < a.contact - .045 || t > a.contact + a.active) continue;
+      const b = Combat.blade(a, player.x, FLOOR, player.facing, t);
+      const fade = clamp(1 - (a.t - t) / .10, 0, 1);
+      line([[b.base.x, b.base.y], [b.tip.x, b.tip.y]], a.kind === 'heavy' ? `rgba(255,240,185,${fade * .19})` : `rgba(223,243,228,${fade * .16})`, 8);
+    }
+    ctx.restore();
+  }
+  function drawGeometry() {
+    if (!showGeometry) return;
+    ctx.save();
+    ctx.strokeStyle = '#eb9e65'; ctx.lineWidth = 1.5;
+    if (!enemy.dead) ctx.strokeRect(enemy.x - 35, FLOOR - 151, 70, 125);
+    if (attack) {
+      const b = Combat.blade(attack, player.x, FLOOR, player.facing);
+      const active = attack.t >= attack.contact && attack.t <= attack.contact + attack.active;
+      line([[b.base.x,b.base.y],[b.tip.x,b.tip.y]], active ? '#e88b51' : '#dcebdc90', 3);
+      ellipse(b.tip.x,b.tip.y,4,4,'#fff4d0');
+    }
+    if (lastContact && lastContact.age < 2) {
+      const { x, y } = lastContact;
+      line([[x-9,y],[x+9,y]],'#fff4d0',2); line([[x,y-9],[x,y+9]],'#fff4d0',2);
+    }
     ctx.restore();
   }
   function drawEnemy() {
@@ -508,19 +595,31 @@
     ctx.setTransform(width/viewWidth,0,0,height/H,-cameraX*width/viewWidth,0);
     ctx.clearRect(cameraX,0,viewWidth,H);
     ctx.save();
-    if(effects.shake&&shake>0)ctx.translate(Math.sin(time*171)*shake,Math.cos(time*139)*shake*.6);
+    if(effects.shake)ctx.translate(cameraSpring.x,cameraVertical.x);
     background();
     for(const g of ghosts){ctx.save();ctx.globalAlpha=g.life/.16*.19;drawPlayer(g.x,g.facing,true);ctx.restore();}
     if(player.x<enemy.x){drawPlayer();drawEnemy();}else{drawEnemy();drawPlayer();}
-    drawEffects();ctx.restore();
+    drawEffects();drawGeometry();ctx.restore();
   }
   function frame(timestamp) {
-    const dt = Math.min((timestamp-lastTime)/1000 || .016,.035);lastTime=timestamp;
-    update(dt);render();requestAnimationFrame(frame);
+    frameTime = timestamp;
+    const dt = lastTime === null ? 0 : Math.max(0, (timestamp - lastTime) / 1000);
+    lastTime = timestamp;
+    if (!document.hidden) {
+      updatePresentation(dt);
+      // Keep normal low-frame-rate play accurate; bound catch-up after a long stall.
+      accumulator += Math.min(dt, .25);
+      while (accumulator + 1e-9 >= STEP) { update(STEP); accumulator -= STEP; }
+      render();
+    }
+    requestAnimationFrame(frame);
   }
 
   fxNames.forEach(k => $('fx-'+k).addEventListener('change',e=>{effects[k]=e.target.checked;if(k==='audio'&&effects.audio)initAudio();updatePresets();}));
   $('preset-raw').addEventListener('click',()=>preset(false));$('preset-full').addEventListener('click',()=>preset(true));
+  $('heavy-stop').addEventListener('input',e=>{heavyStop=Number(e.target.value)/1000;$('heavy-stop-value').value=e.target.value+' ms';});
+  $('geometry-button').addEventListener('click',()=>{showGeometry=!showGeometry;$('geometry-button').setAttribute('aria-pressed',String(showGeometry));$('geometry-button').textContent=showGeometry?'隐藏判定':'显示判定';});
+  $('export-button').addEventListener('click',()=>{const blob=new Blob([JSON.stringify({version:'1.1',effects,intensity,heavyStop,events},null,2)],{type:'application/json'});const url=URL.createObjectURL(blob),a=document.createElement('a');a.href=url;a.download='impact-lab-session.json';a.click();setTimeout(()=>URL.revokeObjectURL(url),1000);});
   $('intensity').addEventListener('input',e=>{intensity=Number(e.target.value)/100;$('intensity-value').value=e.target.value+'%';});
   $('target-type').addEventListener('change',()=>{resetScene(challenge);canvas.focus({preventScroll:true});});
   $('reset-button').addEventListener('click',()=>resetScene(challenge));
@@ -528,8 +627,8 @@
   $('again-button').addEventListener('click',()=>{initAudio();resetScene(true);});
   $('practice-button').addEventListener('click',()=>resetScene(false));
   document.querySelectorAll('[data-action]').forEach(b=>{
-    b.addEventListener('pointerdown',e=>{e.preventDefault();attackRequest(b.dataset.action);});
-    b.addEventListener('click',e=>{if(e.detail===0)attackRequest(b.dataset.action);});
+    b.addEventListener('pointerdown',e=>{e.preventDefault();b._lastPointerAt=performance.now();attackRequest(b.dataset.action);});
+    b.addEventListener('click',e=>{if(e.detail===0 && performance.now()-(b._lastPointerAt||0)>240)attackRequest(b.dataset.action);});
   });
   document.querySelectorAll('[data-hold]').forEach(b=>{
     b.addEventListener('pointerdown',e=>{e.preventDefault();initAudio();touchKeys.add(b.dataset.hold);b.classList.add('held');b.setPointerCapture(e.pointerId);});
@@ -549,7 +648,10 @@
   window.addEventListener('keyup',e=>keys.delete(e.key.toLowerCase()));
   function clearInput(){keys.clear();touchKeys.clear();queued=null;document.querySelectorAll('.key-button').forEach(b=>b.classList.remove('held'));}
   window.addEventListener('blur',clearInput);
-  document.addEventListener('visibilitychange',()=>{if(document.hidden)clearInput();lastTime=performance.now();});
+  document.addEventListener('visibilitychange',()=>{if(document.hidden)clearInput();lastTime=null;accumulator=0;});
   canvas.addEventListener('pointerdown',()=>{initAudio();canvas.focus({preventScroll:true});});
+  if (new URLSearchParams(location.search).has('debug')) {
+    Object.defineProperty(window, 'impactLab', { value: Object.freeze({ snapshot: () => structuredClone({ player, enemy, attack, queued, freeze, remaining, challenge, finished, totalHits, lastContact, events, cameraSpring, particles }) }) });
+  }
   resetScene();updatePresets();requestAnimationFrame(frame);
 })();
