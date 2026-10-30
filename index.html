@@ -1,0 +1,62 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+  <meta name="theme-color" content="#f5f4ee">
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' fill='%23255143'/%3E%3Cpath d='M8 24 24 8M12 8h12v12' stroke='%23f5f4ee' stroke-width='3' fill='none'/%3E%3C/svg%3E">
+  <title>IMPACT LAB — 打击感实验场</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <div class="app">
+    <header class="topbar">
+      <a class="brand" href="./" aria-label="Impact Lab 首页"><span class="brand-icon">i<span>↗</span></span>IMPACT LAB<span class="brand-tag">INTERACTIVE STUDY / 001</span></a>
+      <div class="top-status"><i></i> 一个关于「打中」的实验 <span class="version">v1.0</span></div>
+    </header>
+
+    <section class="intro">
+      <div><div class="eyebrow">LESS EFFECTS. MORE INTENT.</div><h1>每一击，都有回响<span class="orange">。</span></h1><p>挥剑、命中、感受。亲手拆解动作游戏的打击感。</p></div>
+      <div class="intro-note"><span>一个动作，两种感受</span><p>用 <kbd>B</kbd> 随时切换反馈，<br>发现让一击变得有力的细节。</p></div>
+    </section>
+
+    <main class="workspace">
+      <section class="play-column" aria-label="战斗实验场">
+        <div class="arena-toolbar"><div class="arena-label"><span class="live-dot"></span> TRAINING GROUND <span class="divider">/</span><span id="mode-label">自由练习</span></div><button class="text-button" id="reset-button" title="快捷键 R"><span>↺</span> 重置场景 <kbd>R</kbd></button></div>
+        <div class="arena" id="arena">
+          <canvas id="game" tabindex="0" aria-label="打击感战斗游戏。A D 或左右方向键移动，J 轻击，K 重击，空格闪避，B 切换反馈。"></canvas>
+          <div class="arena-hud"><div class="player-hud"><span class="hud-kicker">YOU / 试炼者</span><div class="health-segments" id="player-health" aria-label="玩家生命值 5"><i></i><i></i><i></i><i></i><i></i></div></div><div class="arena-mode" id="arena-mode">完整反馈 <span>ON</span></div></div>
+          <div class="arena-title"><span>01 — THE CONTACT</span><p>力量，需要一个回应。</p></div>
+          <div class="target-hud"><div><span id="target-name">训练机兵</span><span id="target-health-text">180 / 180</span></div><div class="target-health-track"><i id="target-health-bar"></i></div></div>
+          <div class="combo-hud" id="combo-hud"><strong id="combo-count">0</strong><span>HITS</span></div>
+          <div class="arena-message" id="arena-message" aria-live="polite"></div>
+          <div class="arena-bottom"><span><i></i><span id="arena-hint">靠近机兵，按 J 打出第一击</span></span><span id="arena-clock">∞ FREE PLAY</span></div>
+          <div class="result-overlay" id="result-overlay" hidden><div class="result-card"><span class="eyebrow">SESSION COMPLETE</span><h2 id="result-title">试炼完成</h2><p id="result-copy"></p><button class="primary-button" id="again-button">再试一次 ↗</button><button class="text-button" id="practice-button">返回自由练习</button></div></div>
+        </div>
+        <div class="controls"><div class="move-controls"><span class="control-label">移动</span><button class="key-button" data-hold="left" aria-label="向左移动">A</button><button class="key-button" data-hold="right" aria-label="向右移动">D</button></div><div class="action-controls"><button class="control-action" data-action="light"><kbd>J</kbd><span>轻击<small>三段连击</small></span></button><button class="control-action" data-action="heavy"><kbd>K</kbd><span>重击<small>蓄势破防</small></span></button><button class="control-action" data-action="dash"><kbd>SPACE</kbd><span>闪避<small>短暂无敌</small></span></button></div><span class="controls-tip">点击按钮也能操作 ↗</span></div>
+        <div class="telemetry"><div><span class="metric-label">LAST IMPACT / 上次命中</span><strong id="last-hit">等待挥剑<span>—</span></strong></div><div><span class="metric-label">DAMAGE</span><strong id="damage-value">—<small>伤害</small></strong></div><div><span class="metric-label">HIT STOP</span><strong id="stop-value">—<small>ms</small></strong></div><div><span class="metric-label">TOTAL HITS</span><strong id="hits-value">00<small>命中</small></strong></div><div class="signal-icon" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i><i></i><i></i></div></div>
+      </section>
+
+      <aside class="panel" aria-label="反馈实验控制面板">
+        <div class="panel-heading"><div><span class="eyebrow">THE FEEL, DECONSTRUCTED</span><h2>调校这一击</h2></div><span class="tune-icon">☷</span></div>
+        <div class="preset-switch" role="group" aria-label="反馈预设"><button id="preset-raw" aria-pressed="false">原始反馈 <span>A</span></button><button class="selected" id="preset-full" aria-pressed="true">完整反馈 <span>B</span></button></div>
+        <p class="panel-description" id="preset-description">相同的伤害与规则，感受更清晰的力量传递。</p>
+        <div class="feedback-list">
+          <label class="feedback-row"><span class="feature-icon">Ⅱ</span><span class="feature-text"><strong>命中停顿 <small>HIT STOP</small></strong><span>给接触瞬间，一个有力的顿号</span></span><input type="checkbox" id="fx-hitstop" checked><span class="toggle"></span></label>
+          <label class="feedback-row"><span class="feature-icon">↗</span><span class="feature-text"><strong>受击表现 <small>REACTION</small></strong><span>后仰、闪白，让目标回应力量</span></span><input type="checkbox" id="fx-reaction" checked><span class="toggle"></span></label>
+          <label class="feedback-row"><span class="feature-icon">⌁</span><span class="feature-text"><strong>镜头震动 <small>SHAKE</small></strong><span>短促的冲击，传递到视野</span></span><input type="checkbox" id="fx-shake" checked><span class="toggle"></span></label>
+          <label class="feedback-row"><span class="feature-icon">✳</span><span class="feature-text"><strong>命中特效 <small>PARTICLES</small></strong><span>刀光与碎屑，勾勒接触位置</span></span><input type="checkbox" id="fx-particles" checked><span class="toggle"></span></label>
+          <label class="feedback-row"><span class="feature-icon">♬</span><span class="feature-text"><strong>打击音效 <small>AUDIO</small></strong><span>用声音，听见金属与重量</span></span><input type="checkbox" id="fx-audio" checked><span class="toggle"></span></label>
+        </div>
+        <div class="intensity-control"><div><label for="intensity">反馈强度</label><output id="intensity-value" for="intensity">100%</output></div><input type="range" id="intensity" min="30" max="150" value="100"><div class="range-labels"><span>克制</span><span>适中</span><span>夸张</span></div></div>
+        <div class="target-control"><label for="target-type">训练目标</label><select id="target-type"><option value="standard">标准机兵 · 可打断</option><option value="armor">装甲机兵 · 重击破防</option></select></div>
+        <div class="challenge-card"><div class="challenge-title"><span>↗</span><strong>把手感，放进实战</strong><span class="time-chip">30 SEC</span></div><p>机兵开始反击。把握距离，闪避，再出手。</p><button class="primary-button" id="challenge-button">开始 30 秒试炼 <span>↗</span></button></div>
+      </aside>
+    </main>
+
+    <section class="principles" aria-label="实验观察"><div class="principle-label">WHAT TO NOTICE <span>试着感受</span></div><article><span>01</span><div><h3>先有蓄势，才有释放</h3><p>对比轻击与重击，留意出手前后的速度变化。</p></div></article><article><span>02</span><div><h3>目标，是另一半表演</h3><p>关闭受击表现，看看这一击还剩多少重量。</p></div></article><article><span>03</span><div><h3>重音，需要留白</h3><p>轻击接重击，感受停顿与节奏的层级。</p></div></article></section>
+    <footer><span>IMPACT LAB <span class="footer-cross">✳</span> 从操作，到回响。</span><span>浏览器原生运行 · 建议佩戴耳机 <span class="footer-dot">●</span></span></footer>
+  </div>
+  <script src="game.js"></script>
+</body>
+</html>
