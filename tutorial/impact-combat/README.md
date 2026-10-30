@@ -8,7 +8,7 @@
 
 - [设计方案与实现映射](docs/DESIGN.md)
 - [打击感优化调研](docs/RESEARCH.md)
-- [动作游戏设计指南](docs/ACTION_GAME_DESIGN_GUIDE.md)
+- [动作游戏设计指南](../../docs/ACTION_GAME_DESIGN_GUIDE.md)
 - [验证记录](docs/VALIDATION.md)
 - [手机界面预览](docs/images/mobile.png)
 

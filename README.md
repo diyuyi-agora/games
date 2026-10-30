@@ -6,6 +6,9 @@
 
 ```text
 .
+├── docs/                             通用游戏设计资料与方法
+│   ├── README.md                     文档索引
+│   └── ACTION_GAME_DESIGN_GUIDE.md    动作游戏设计指南
 ├── tutorial/                         每个子目录对应一个探索方向
 │   ├── README.md                     方向索引与组织约定
 │   └── impact-combat/                动作游戏打击感
@@ -24,9 +27,9 @@
 
 | 方向 | 核心问题 | 入口 |
 | --- | --- | --- |
-| 动作游戏打击感 | 如何让输入、接触、目标反应与视听反馈形成清晰的力量传递？ | [impact-combat](tutorial/impact-combat/README.md) · [动作游戏设计指南](tutorial/impact-combat/docs/ACTION_GAME_DESIGN_GUIDE.md) |
+| 动作游戏打击感 | 如何让输入、接触、目标反应与视听反馈形成清晰的力量传递？ | [impact-combat](tutorial/impact-combat/README.md) |
 
-新方向在 `tutorial/` 下建立独立目录，代码、研究资料和验证方法放在该方向内部；可跨方向复用的经验放到仓库级 `.agents/skills/`。
+通用设计指南和方法放在根目录 [docs/](docs/README.md)，当前包括[动作游戏设计指南](docs/ACTION_GAME_DESIGN_GUIDE.md)。新方向在 `tutorial/` 下建立独立目录，代码、该实验的方案和验证记录放在方向内部；可复用的操作流程放到仓库级 `.agents/skills/`。
 
 ## 体验 Demo
 

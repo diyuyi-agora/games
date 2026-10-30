@@ -100,7 +100,7 @@
 
 **建议产出：**命中结果与反馈的映射表，以及反馈强度、频率和并发预算。
 
-**如何验证：**在保持伤害、判定和敌人规则一致的条件下比较反馈，检查玩家能否辨认结果、保持操作和判断下一步。详细方法见 [打击感优化调研](RESEARCH.md) 和 [设计方案与实现映射](DESIGN.md)。
+**如何验证：**在保持伤害、判定和敌人规则一致的条件下比较反馈，检查玩家能否辨认结果、保持操作和判断下一步。详细方法见 [打击感优化调研](../tutorial/impact-combat/docs/RESEARCH.md) 和 [设计方案与实现映射](../tutorial/impact-combat/docs/DESIGN.md)。
 
 ## 4 完整游戏所需的支撑设计
 
@@ -176,7 +176,7 @@
 4. **连接短流程：**安排首次教学、组合挑战、结束反馈和快速重试。
 5. **最后评估成长需求：**只有当新的能力选择能改变交锋策略时，再扩展技能或装备。
 
-每轮只解决明确的问题，保留当前反馈实验入口，以便比较新增规则对可读性和操作的影响。当前实现范围以 [项目 README](../README.md)、[设计说明](DESIGN.md) 为准；验证记录见 [VALIDATION.md](VALIDATION.md)。
+每轮只解决明确的问题，保留当前反馈实验入口，以便比较新增规则对可读性和操作的影响。当前实现范围以 [实验 README](../tutorial/impact-combat/README.md)、[设计说明](../tutorial/impact-combat/docs/DESIGN.md) 为准；验证记录见 [VALIDATION.md](../tutorial/impact-combat/docs/VALIDATION.md)。
 
 ## 6 可直接复用的设计记录
 
