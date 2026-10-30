@@ -4,7 +4,7 @@
 
 | 目录 | 探索内容 | 运行与验证 |
 | --- | --- | --- |
-| [impact-combat](impact-combat/README.md) | 动作游戏打击感：命中停顿、扫掠碰撞、输入缓存、受击、镜头与声音 | 原生 H5；Node 行为回归 |
+| [impact-combat](impact-combat/README.md) | 动作游戏打击感：命中停顿、扫掠碰撞、输入缓存、受击、镜头与声音 | [设计指南](impact-combat/docs/ACTION_GAME_DESIGN_GUIDE.md)；原生 H5；Node 行为回归 |
 
 ## 新方向的组织约定
 
