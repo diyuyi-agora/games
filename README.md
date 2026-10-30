@@ -62,3 +62,9 @@ python3 -m http.server 4173 --bind 127.0.0.1
 - 音效设有并发预算与动态压缩，金属装甲和普通目标使用不同的高频／低频层。
 
 版本库中的预览图位于 `docs/images/`；本地浏览器验证的临时产物位于 `output/playwright/`，不提交到 Git。
+
+## 项目 Skill
+
+可复用的动作游戏打击感优化 Skill 位于 [`.agents/skills/impact-combat-feel/SKILL.md`](.agents/skills/impact-combat-feel/SKILL.md)。它把当前实验场的打击感原则、优化顺序、调参范围和回归方法提炼成后续开发可直接使用的工作流。
+
+在支持项目技能的 Codex 会话中可使用 `$impact-combat-feel`，例如：`使用 $impact-combat-feel 检查当前游戏的重击、连招缓存与受击反馈，并优化最明显的问题。` Skill 与代码一起保存在仓库，不需要安装到个人全局目录。

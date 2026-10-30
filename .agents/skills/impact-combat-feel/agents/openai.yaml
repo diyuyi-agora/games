@@ -1,0 +1,4 @@
+interface:
+  display_name: "动作游戏打击感优化"
+  short_description: "诊断命中、连招和停顿问题，优化碰撞轨迹、受击、镜头与音效"
+  default_prompt: "使用 $impact-combat-feel 诊断当前游戏的打击感，按接触、计时、输入和反馈层级逐项优化，并运行相关回归验证。"
